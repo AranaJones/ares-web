@@ -13,12 +13,18 @@ io.on('connection', (socket) => {
     let aresSocket = null;
 
     socket.on('connect_ares', ({ ip, port, username }) => {
+        // SAFETY UPGRADE: If the user is already connected to a room,
+        // cleanly close the old connection before opening the new one.
+        if (aresSocket && !aresSocket.destroyed) {
+            aresSocket.destroy();
+            console.log('Cleaned up previous active socket before room switch.');
+        }
+
         console.log(`Connecting to ${ip}:${port} as ${username}`);
         aresSocket = new net.Socket();
 
         aresSocket.connect(port, ip, () => {
             socket.emit('status', 'Connected to server! Logging in...');
-            // Simple generic packet framework
             aresSocket.write(`ARES_LOGIN:${username}\n`);
         });
 
