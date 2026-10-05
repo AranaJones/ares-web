@@ -155,15 +155,18 @@
     }
 
     socket.on('live_channels_data', (payload) => {
-        const rooms = Array.isArray(payload) ? payload : (payload.rooms || []);
+        payload = payload || {};
+        const rooms = Array.isArray(payload) ? payload : (Array.isArray(payload.rooms) ? payload.rooms : []);
         const error = Array.isArray(payload) ? null : payload.error;
         roomsList.innerHTML = '';
         if (error) {
             showRoomMessage(rooms.length
-                ? `Could not reach ares.chat (${error}). Showing cached list.`
-                : `Could not reach ares.chat (${error}). No rooms available - try Refresh later.`, '#a33');
+                ? `Backend is reachable but the tracker is unavailable (${error}). Showing cached list${payload.cachedAt ? ' from ' + new Date(payload.cachedAt).toLocaleTimeString() : ''}.`
+                : `Backend is reachable but the tracker is unavailable (${error}). No rooms available - try Refresh later.`, '#a33');
         } else if (!rooms.length) {
-            showRoomMessage('No rooms found.', '#555');
+            showRoomMessage('Tracker responded but no rooms were found.', '#555');
+        } else if (payload.cached) {
+            showRoomMessage(`Showing cached rooms${payload.cachedAt ? ' from ' + new Date(payload.cachedAt).toLocaleTimeString() : ''}.`, '#555');
         }
         rooms.forEach(room => {
             const btn = document.createElement('button');
