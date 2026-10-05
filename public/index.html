@@ -162,3 +162,60 @@
         const username = document.getElementById('username').value;
         chatBox.innerHTML = ''; 
         appendMsg('System', `Opening standard connection handshake with server room [${name}] on target ${ip}:${port}...`, 'nick-sys');
+
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        messageInput.placeholder = 'Type a message...';
+        chatHistory = [];
+    }
+
+    let chatHistory = [];
+
+    function appendMsg(nick, text, cls) {
+        const line = document.createElement('div');
+        const nickEl = document.createElement('span');
+        nickEl.className = cls || '';
+        nickEl.textContent = `<${nick}> `;
+        line.appendChild(nickEl);
+        line.appendChild(document.createTextNode(text));
+        chatBox.appendChild(line);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Sends the message to the server-side Ares Galaxy proxy (/api/chat),
+    // which holds the API key so it is never exposed to the browser.
+    async function send() {
+        const text = messageInput.value.trim();
+        if (!text) return;
+        const username = document.getElementById('username').value || 'AresUser';
+        messageInput.value = '';
+        appendMsg(username, text, 'nick-user');
+        chatHistory.push({ role: 'user', content: text });
+        sendBtn.disabled = true;
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: chatHistory })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error((data.error && (data.error.message || data.error)) || `HTTP ${res.status}`);
+            }
+            const reply = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+            if (typeof reply !== 'string' || !reply) {
+                throw new Error('Ares Galaxy returned an unexpected response.');
+            }
+            chatHistory.push({ role: 'assistant', content: reply });
+            appendMsg('Ares Galaxy', reply, 'nick-sys');
+        } catch (err) {
+            chatHistory.pop();
+            appendMsg('System', `Could not reach Ares Galaxy: ${err.message}`, 'nick-sys');
+        } finally {
+            sendBtn.disabled = false;
+            messageInput.focus();
+        }
+    }
+</script>
+</body>
+</html>
