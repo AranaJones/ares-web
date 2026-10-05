@@ -142,21 +142,61 @@
     const messageInput = document.getElementById('message');
     const sendBtn = document.getElementById('send-btn');
 
-    function fetchLiveRooms() {
-        roomsList.innerHTML = '<div style="padding:15px; text-align:center; color:#555;">Fetching live data...</div>';
-        socket.emit('get_live_channels');
+    function showRoomsMessage(text, color) {
+        roomsList.textContent = '';
+        const div = document.createElement('div');
+        div.style.cssText = 'padding:15px; text-align:center; color:' + color + ';';
+        div.textContent = text;
+        roomsList.appendChild(div);
     }
 
-    socket.on('live_channels_data', (rooms) => {
-        roomsList.innerHTML = '';
+    function renderRooms(data) {
+        const rooms = Array.isArray(data.rooms) ? data.rooms : [];
+        roomsList.textContent = '';
+        if (data.stale) {
+            const note = document.createElement('div');
+            note.style.cssText = 'padding:6px; text-align:center; color:#a60;';
+            note.textContent = 'Room list may be out of date.';
+            roomsList.appendChild(note);
+        }
+        if (rooms.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'padding:15px; text-align:center; color:#888;';
+            empty.textContent = 'No rooms available.';
+            roomsList.appendChild(empty);
+            return;
+        }
         rooms.forEach(room => {
             const btn = document.createElement('button');
             btn.className = 'channel-row';
-            btn.innerHTML = `<span># ${room.name}</span> <span class="user-counter">[${room.users}]</span>`;
+            const name = document.createElement('span');
+            name.textContent = '# ' + room.name;
+            const count = document.createElement('span');
+            count.className = 'user-counter';
+            count.textContent = '[' + room.users + ']';
+            btn.appendChild(name);
+            btn.appendChild(document.createTextNode(' '));
+            btn.appendChild(count);
+            if (room.topic) btn.title = room.topic;
             btn.onclick = () => connectToRoom(room.ip, room.port, room.name);
             roomsList.appendChild(btn);
         });
-    });
+    }
+
+    async function fetchLiveRooms() {
+        showRoomsMessage('Fetching live data...', '#555');
+        try {
+            const res = await fetch('/api/rooms');
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            renderRooms(await res.json());
+        } catch (err) {
+            showRoomsMessage('Could not load rooms: ' + err.message, '#b00');
+        }
+    }
+
+    socket.on('live_channels_data', (rooms) => renderRooms({ rooms, stale: false }));
+
+    fetchLiveRooms();
 
     function connectToRoom(ip, port, name) {
         const username = document.getElementById('username').value;

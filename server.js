@@ -1,7 +1,9 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const axios = require('axios');
+const { createAdapter } = require('./lib/index-adapters');
+const { createRoomCache } = require('./lib/roomCache');
+const { createRoomsRouter } = require('./lib/roomsRouter');
 
 const app = express();
 const server = http.createServer(app);
@@ -14,42 +16,11 @@ const PORT = process.env.PORT || 3000;
 // Serve static frontend files (HTML/JS) from a folder named 'public'
 app.use(express.static('public'));
 
-/**
- * 1. NODE PARSER ENGINE
- * Automatically downloads and unpacks live binary nodes from the active network tracker.
- */
-async function syncLiveAresNodes() {
-    try {
-        console.log("[ARES NODE TRACKER] Fetching live bootstrap node list from ares.chat...");
-        
-        // Fetch the raw live server list data stream as a binary buffer
-        const response = await axios.get('https://ares.chat', {
-            responseType: 'arraybuffer'
-        });
-        
-        const buffer = Buffer.from(response.data);
-        const updatedNodes = [];
-        
-        // Ares Galaxy network servers store data in fixed 6-byte chunks:
-        // - First 4 Bytes: The IPv4 Address octets (e.g., 192.168.1.1)
-        // - Next 2 Bytes: The Port Number (saved as a Big Endian Unsigned 16-bit Integer)
-        for (let i = 0; i < buffer.length; i += 6) {
-            if (i + 6 > buffer.length) break; // Safety overflow protection
-            
-            const ip = `${buffer[i]}.${buffer[i+1]}.${buffer[i+2]}.${buffer[i+3]}`;
-            const port = buffer.readUInt16BE(i + 4);
-            
-            updatedNodes.push({ ip, port });
-        }
-        
-        console.log(`[ARES NODE TRACKER] Successfully synced ${updatedNodes.length} active connection targets.`);
-        return updatedNodes;
-        
-    } catch (error) {
-        console.error("[ARES NODE TRACKER] Critical error pulling node list:", error.message);
-        return []; // Return empty array on failure to prevent app crashes
-    }
-}
+const roomCache = createRoomCache(createAdapter(), {
+    ttlMs: Number(process.env.ROOM_CACHE_TTL_MS) || 60000
+});
+
+app.use('/api/rooms', createRoomsRouter(roomCache));
 
 /**
  * 2. WEBSOCKET REAL-TIME CLIENT CONNECTIONS
@@ -60,9 +31,14 @@ io.on('connection', (socket) => {
 
     // When a browser requests fresh, verified network entry nodes
     socket.on('request_nodes', async () => {
-        const freshNodes = await syncLiveAresNodes();
-        // Send clean data directly back to the HTML client interface
-        socket.emit('node_list_update', freshNodes);
+        await roomCache.refresh();
+        const nodes = roomCache.getSnapshot().rooms.map(({ ip, port }) => ({ ip, port }));
+        socket.emit('node_list_update', nodes);
+    });
+
+    // Answer the room list from the same cache as GET /api/rooms
+    socket.on('get_live_channels', () => {
+        socket.emit('live_channels_data', roomCache.getSnapshot().rooms);
     });
 
     socket.on('disconnect', () => {
@@ -73,12 +49,15 @@ io.on('connection', (socket) => {
 /**
  * 3. ENGINE INITIALISATION
  */
+if (require.main === module) {
 server.listen(PORT, () => {
     console.log(`==================================================`);
     console.log(` Ares Web Client Backend Engine Active!`);
     console.log(` Server running locally at: http://localhost:${PORT}`);
     console.log(`==================================================`);
-    
-    // Test the tracker pull immediately on server boot
-    syncLiveAresNodes();
+
+    roomCache.start();
 });
+}
+
+module.exports = { app, server, roomCache };
