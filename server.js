@@ -20,44 +20,96 @@ app.use(express.static('public'));
  */
 let cachedNodes = [];
 let cachedAt = null;
+let lastError = null;
+let inflight = null;
 
-async function syncLiveAresNodes() {
-    try {
-        console.log("[ARES NODE TRACKER] Fetching live bootstrap node list from ares.chat...");
+const TRACKER_URL = process.env.TRACKER_URL || 'https://ares.chat';
+const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS) || 60000;
+const TRACKER_TIMEOUT_MS = Number(process.env.TRACKER_TIMEOUT_MS) || 20000;
+const TRACKER_RETRIES = 2;
 
-        const response = await axios.get('https://ares.chat', {
-            responseType: 'arraybuffer',
-            timeout: 10000,
-            maxRedirects: 5
-        });
-
-        const contentType = String(response.headers['content-type'] || '').toLowerCase();
-        if (contentType.includes('text/html') || contentType.includes('json')) {
-            throw new Error(`Unexpected content type: ${contentType}`);
-        }
-
-        const buffer = Buffer.from(response.data);
-        if (buffer.length < 6) {
-            throw new Error('Empty or truncated response from tracker');
-        }
-        const updatedNodes = [];
-
-        // Fixed 6-byte records: 4 bytes IPv4 + 2 bytes big-endian port
-        for (let i = 0; i + 6 <= buffer.length; i += 6) {
-            const ip = `${buffer[i]}.${buffer[i+1]}.${buffer[i+2]}.${buffer[i+3]}`;
-            const port = buffer.readUInt16BE(i + 4);
-            updatedNodes.push({ ip, port });
-        }
-
-        cachedNodes = updatedNodes;
-        cachedAt = Date.now();
-        console.log(`[ARES NODE TRACKER] Successfully synced ${updatedNodes.length} active connection targets.`);
-        return { nodes: updatedNodes, cached: false, error: null };
-
-    } catch (error) {
-        console.error("[ARES NODE TRACKER] Critical error pulling node list:", error.message);
-        return { nodes: cachedNodes, cached: cachedNodes.length > 0, cachedAt, error: error.message };
+function describeError(error) {
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        return `Tracker timed out after ${TRACKER_TIMEOUT_MS}ms`;
     }
+    if (error.response) return `Tracker returned HTTP ${error.response.status}`;
+    if (error.code) return `${error.message} (${error.code})`;
+    return error.message;
+}
+
+// Fixed 6-byte records: 4 bytes IPv4 + 2 bytes big-endian port
+function parseNodes(data) {
+    const buffer = Buffer.from(data || []);
+    if (buffer.length < 6) {
+        throw new Error('Empty or truncated response from tracker');
+    }
+    const nodes = [];
+    for (let i = 0; i + 6 <= buffer.length; i += 6) {
+        nodes.push({
+            ip: `${buffer[i]}.${buffer[i+1]}.${buffer[i+2]}.${buffer[i+3]}`,
+            port: buffer.readUInt16BE(i + 4)
+        });
+    }
+    return nodes;
+}
+
+async function fetchTrackerOnce() {
+    const response = await axios.get(TRACKER_URL, {
+        responseType: 'arraybuffer',
+        timeout: TRACKER_TIMEOUT_MS,
+        maxRedirects: 5
+    });
+    const contentType = String((response.headers || {})['content-type'] || '').toLowerCase();
+    if (contentType.includes('text/html') || contentType.includes('json')) {
+        throw new Error(`Unexpected content type: ${contentType}`);
+    }
+    return parseNodes(response.data);
+}
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchTrackerWithRetry() {
+    let lastErr;
+    for (let attempt = 1; attempt <= TRACKER_RETRIES + 1; attempt++) {
+        try {
+            return await fetchTrackerOnce();
+        } catch (error) {
+            lastErr = new Error(describeError(error));
+            console.error(`[ARES NODE TRACKER] Attempt ${attempt}/${TRACKER_RETRIES + 1} failed: ${lastErr.message}`);
+            if (attempt <= TRACKER_RETRIES) await sleep(1000 * attempt);
+        }
+    }
+    throw lastErr;
+}
+
+function currentResult(cached) {
+    return { nodes: cachedNodes, cached: cached && cachedNodes.length > 0, cachedAt, error: lastError };
+}
+
+async function syncLiveAresNodes({ force = false } = {}) {
+    if (!force && cachedAt && Date.now() - cachedAt < CACHE_TTL_MS) {
+        return currentResult(true);
+    }
+    if (!inflight) {
+        console.log(`[ARES NODE TRACKER] Fetching live bootstrap node list from ${TRACKER_URL}...`);
+        inflight = fetchTrackerWithRetry()
+            .then(nodes => {
+                cachedNodes = nodes;
+                cachedAt = Date.now();
+                lastError = null;
+                console.log(`[ARES NODE TRACKER] Successfully synced ${nodes.length} active connection targets.`);
+            })
+            .catch(error => {
+                lastError = error.message;
+                console.error("[ARES NODE TRACKER] Critical error pulling node list:", error.message);
+            })
+            .finally(() => { inflight = null; });
+    }
+    if (!force && cachedNodes.length) {
+        return currentResult(true);
+    }
+    await inflight;
+    return lastError ? currentResult(true) : currentResult(false);
 }
 
 /**
