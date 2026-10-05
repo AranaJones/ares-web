@@ -147,15 +147,41 @@
         socket.emit('get_live_channels');
     }
 
-    socket.on('live_channels_data', (rooms) => {
+    function showRoomMessage(text, color) {
+        const div = document.createElement('div');
+        div.style.cssText = `padding:15px; text-align:center; color:${color};`;
+        div.textContent = text;
+        roomsList.appendChild(div);
+    }
+
+    socket.on('live_channels_data', (payload) => {
+        const rooms = Array.isArray(payload) ? payload : (payload.rooms || []);
+        const error = Array.isArray(payload) ? null : payload.error;
         roomsList.innerHTML = '';
+        if (error) {
+            showRoomMessage(rooms.length
+                ? `Could not reach ares.chat (${error}). Showing cached list.`
+                : `Could not reach ares.chat (${error}). No rooms available - try Refresh later.`, '#a33');
+        } else if (!rooms.length) {
+            showRoomMessage('No rooms found.', '#555');
+        }
         rooms.forEach(room => {
             const btn = document.createElement('button');
             btn.className = 'channel-row';
-            btn.innerHTML = `<span># ${room.name}</span> <span class="user-counter">[${room.users}]</span>`;
+            const name = document.createElement('span');
+            name.textContent = `# ${room.name}`;
+            const users = document.createElement('span');
+            users.className = 'user-counter';
+            users.textContent = `[${room.users}]`;
+            btn.append(name, ' ', users);
             btn.onclick = () => connectToRoom(room.ip, room.port, room.name);
             roomsList.appendChild(btn);
         });
+    });
+
+    socket.on('connect_error', () => {
+        roomsList.innerHTML = '';
+        showRoomMessage('Cannot reach backend server.', '#a33');
     });
 
     function connectToRoom(ip, port, name) {

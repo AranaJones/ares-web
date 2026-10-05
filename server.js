@@ -18,36 +18,45 @@ app.use(express.static('public'));
  * 1. NODE PARSER ENGINE
  * Automatically downloads and unpacks live binary nodes from the active network tracker.
  */
+let cachedNodes = [];
+let cachedAt = null;
+
 async function syncLiveAresNodes() {
     try {
         console.log("[ARES NODE TRACKER] Fetching live bootstrap node list from ares.chat...");
-        
-        // Fetch the raw live server list data stream as a binary buffer
+
         const response = await axios.get('https://ares.chat', {
-            responseType: 'arraybuffer'
+            responseType: 'arraybuffer',
+            timeout: 10000,
+            maxRedirects: 5
         });
-        
+
+        const contentType = String(response.headers['content-type'] || '').toLowerCase();
+        if (contentType.includes('text/html') || contentType.includes('json')) {
+            throw new Error(`Unexpected content type: ${contentType}`);
+        }
+
         const buffer = Buffer.from(response.data);
+        if (buffer.length < 6) {
+            throw new Error('Empty or truncated response from tracker');
+        }
         const updatedNodes = [];
-        
-        // Ares Galaxy network servers store data in fixed 6-byte chunks:
-        // - First 4 Bytes: The IPv4 Address octets (e.g., 192.168.1.1)
-        // - Next 2 Bytes: The Port Number (saved as a Big Endian Unsigned 16-bit Integer)
-        for (let i = 0; i < buffer.length; i += 6) {
-            if (i + 6 > buffer.length) break; // Safety overflow protection
-            
+
+        // Fixed 6-byte records: 4 bytes IPv4 + 2 bytes big-endian port
+        for (let i = 0; i + 6 <= buffer.length; i += 6) {
             const ip = `${buffer[i]}.${buffer[i+1]}.${buffer[i+2]}.${buffer[i+3]}`;
             const port = buffer.readUInt16BE(i + 4);
-            
             updatedNodes.push({ ip, port });
         }
-        
+
+        cachedNodes = updatedNodes;
+        cachedAt = Date.now();
         console.log(`[ARES NODE TRACKER] Successfully synced ${updatedNodes.length} active connection targets.`);
-        return updatedNodes;
-        
+        return { nodes: updatedNodes, cached: false, error: null };
+
     } catch (error) {
         console.error("[ARES NODE TRACKER] Critical error pulling node list:", error.message);
-        return []; // Return empty array on failure to prevent app crashes
+        return { nodes: cachedNodes, cached: cachedNodes.length > 0, cachedAt, error: error.message };
     }
 }
 
@@ -59,11 +68,23 @@ io.on('connection', (socket) => {
     console.log(`[CLIENT CONNECTED] User attached to webchat backend (ID: ${socket.id})`);
 
     // When a browser requests fresh, verified network entry nodes
-    socket.on('request_nodes', async () => {
-        const freshNodes = await syncLiveAresNodes();
-        // Send clean data directly back to the HTML client interface
-        socket.emit('node_list_update', freshNodes);
-    });
+    const handleRoomRequest = async () => {
+        const result = await syncLiveAresNodes();
+        const rooms = result.nodes.map(n => ({
+            name: `${n.ip}:${n.port}`,
+            users: '?',
+            ip: n.ip,
+            port: n.port
+        }));
+        socket.emit('live_channels_data', {
+            rooms,
+            cached: result.cached,
+            cachedAt: result.cachedAt || null,
+            error: result.error
+        });
+    };
+    socket.on('get_live_channels', handleRoomRequest);
+    socket.on('request_nodes', handleRoomRequest);
 
     socket.on('disconnect', () => {
         console.log(`[CLIENT DISCONNECTED] User detached (ID: ${socket.id})`);
