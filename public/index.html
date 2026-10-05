@@ -97,6 +97,11 @@
             <label style="font-weight: bold; color: #333;">My Nickname: </label>
             <input type="text" id="username" value="AresUser">
         </div>
+        <div class="user-config">
+            <label style="font-weight: bold; color: #333;">Hashlink: </label>
+            <input type="text" id="hashlink" placeholder="arlnk://... or CHATROOM:ip:port|name" maxlength="4096">
+            <button onclick="joinHashlink()">Join</button>
+        </div>
         <div id="connectionStatus" style="color: #008000; font-weight: bold; font-family: Tahoma;">Network State: Online (Supernode Bridge Active)</div>
     </div>
 
@@ -152,7 +157,12 @@
         rooms.forEach(room => {
             const btn = document.createElement('button');
             btn.className = 'channel-row';
-            btn.innerHTML = `<span># ${room.name}</span> <span class="user-counter">[${room.users}]</span>`;
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = `# ${room.name}`;
+            const countSpan = document.createElement('span');
+            countSpan.className = 'user-counter';
+            countSpan.textContent = `[${room.users}]`;
+            btn.append(nameSpan, ' ', countSpan);
             btn.onclick = () => connectToRoom(room.ip, room.port, room.name);
             roomsList.appendChild(btn);
         });
@@ -162,3 +172,44 @@
         const username = document.getElementById('username').value;
         chatBox.innerHTML = ''; 
         appendMsg('System', `Opening standard connection handshake with server room [${name}] on target ${ip}:${port}...`, 'nick-sys');
+    }
+
+    function appendMsg(nick, text, cls) {
+        const line = document.createElement('div');
+        line.className = 'msg-line';
+        const n = document.createElement('span');
+        n.className = cls;
+        n.textContent = `${nick}: `;
+        const t = document.createElement('span');
+        t.textContent = text;
+        line.append(n, t);
+        chatBox.appendChild(line);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function send() {
+        const text = messageInput.value.trim();
+        if (!text) return;
+        appendMsg(document.getElementById('username').value, text, 'nick-user');
+        messageInput.value = '';
+    }
+
+    function joinHashlink(value) {
+        const link = (typeof value === 'string' ? value : document.getElementById('hashlink').value).trim();
+        if (!link) return;
+        socket.emit('join_hashlink', { hashlink: link });
+    }
+
+    socket.on('join_hashlink_result', (res) => {
+        if (res && res.ok) {
+            connectToRoom(res.room.ip, res.room.port, res.room.name);
+        } else {
+            appendMsg('System', 'Invalid hashlink', 'nick-sys');
+        }
+    });
+
+    const joinParam = new URLSearchParams(location.search).get('join');
+    if (joinParam) joinHashlink(joinParam);
+</script>
+</body>
+</html>
