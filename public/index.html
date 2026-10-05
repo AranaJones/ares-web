@@ -138,27 +138,73 @@
     const socket = io();
     const chatBox = document.getElementById('chat-box');
     const roomsList = document.getElementById('rooms-list');
-    const connectionStatus = document.getElementById('connectionStatus');
     const messageInput = document.getElementById('message');
     const sendBtn = document.getElementById('send-btn');
+    let currentRoom = null;
 
-    function fetchLiveRooms() {
-        roomsList.innerHTML = '<div style="padding:15px; text-align:center; color:#555;">Fetching live data...</div>';
-        socket.emit('get_live_channels');
+    function appendMsg(nick, text, nickClass) {
+        const line = document.createElement('div');
+        line.className = 'msg-line';
+        const nickEl = document.createElement('span');
+        nickEl.className = nickClass || 'nick-user';
+        nickEl.textContent = `${nick}: `;
+        const textEl = document.createElement('span');
+        textEl.textContent = text;
+        line.append(nickEl, textEl);
+        chatBox.appendChild(line);
+        chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    socket.on('live_channels_data', (rooms) => {
-        roomsList.innerHTML = '';
+    function setRoomsMessage(text) {
+        const div = document.createElement('div');
+        div.style.cssText = 'padding:15px; text-align:center; color:#555;';
+        div.textContent = text;
+        roomsList.replaceChildren(div);
+    }
+
+    function fetchLiveRooms() {
+        setRoomsMessage('Fetching live data...');
+        socket.emit('request_nodes');
+    }
+
+    socket.on('node_list_update', (rooms) => {
+        roomsList.replaceChildren();
         rooms.forEach(room => {
             const btn = document.createElement('button');
             btn.className = 'channel-row';
-            btn.innerHTML = `<span># ${room.name}</span> <span class="user-counter">[${room.users}]</span>`;
-            btn.onclick = () => connectToRoom(room.ip, room.port, room.name);
+            const name = document.createElement('span');
+            name.textContent = `# ${room.name}`;
+            const users = document.createElement('span');
+            users.className = 'user-counter';
+            users.textContent = `[${room.users}]`;
+            btn.append(name, users);
+            btn.onclick = () => connectToRoom(room.name);
             roomsList.appendChild(btn);
         });
     });
 
-    function connectToRoom(ip, port, name) {
-        const username = document.getElementById('username').value;
-        chatBox.innerHTML = ''; 
-        appendMsg('System', `Opening standard connection handshake with server room [${name}] on target ${ip}:${port}...`, 'nick-sys');
+    function connectToRoom(name) {
+        const username = document.getElementById('username').value.trim() || 'AresUser';
+        chatBox.replaceChildren();
+        currentRoom = name;
+        socket.emit('join_room', { room: name, username });
+        appendMsg('System', `Joined room [${name}]`, 'nick-sys');
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        messageInput.placeholder = `Message #${name}...`;
+        messageInput.focus();
+    }
+
+    function send() {
+        const text = messageInput.value.trim();
+        if (!currentRoom || !text) return;
+        socket.emit('chat_message', { room: currentRoom, text });
+        messageInput.value = '';
+    }
+
+    socket.on('chat_message', (m) => appendMsg(m.username, m.text, m.system ? 'nick-sys' : 'nick-user'));
+
+    socket.on('connect', fetchLiveRooms);
+</script>
+</body>
+</html>
