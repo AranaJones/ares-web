@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 const axios = require('axios');
 
 const app = express();
@@ -12,7 +13,7 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 
 // Serve static frontend files (HTML/JS) from a folder named 'public'
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 /**
  * 1. NODE PARSER ENGINE
@@ -63,6 +64,14 @@ io.on('connection', (socket) => {
         const freshNodes = await syncLiveAresNodes();
         // Send clean data directly back to the HTML client interface
         socket.emit('node_list_update', freshNodes);
+    });
+
+    // Frontend room directory: the tracker only provides ip:port, so rooms are listed by address
+    socket.on('get_live_channels', async () => {
+        const nodes = await syncLiveAresNodes();
+        socket.emit('live_channels_data', nodes.map(n => ({
+            name: `${n.ip}:${n.port}`, users: 0, ip: n.ip, port: n.port
+        })));
     });
 
     socket.on('disconnect', () => {
