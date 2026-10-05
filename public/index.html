@@ -119,10 +119,10 @@
             <div class="chat-display-box" id="chat-box"></div>
             
             <!-- Message submission text field input block module form wrapper bar trigger framework -->
-            <div class="chat-input-tray">
-                <input type="text" id="message" placeholder="Select a live server room channel link from the left panel sidebar array to connect..." disabled onkeypress="if(event.key==='Enter') send()">
-                <button id="send-btn" onclick="send()" disabled>Send</button>
-            </div>
+            <form class="chat-input-tray" id="chat-form">
+                <input type="text" id="message" placeholder="Select a live server room channel link from the left panel sidebar array to connect..." disabled autocomplete="off">
+                <button type="submit" id="send-btn" disabled>Send</button>
+            </form>
         </div>
     </div>
 
@@ -162,3 +162,12 @@
         const username = document.getElementById('username').value;
         chatBox.innerHTML = ''; 
         appendMsg('System', `Opening standard connection handshake with server room [${name}] on target ${ip}:${port}...`, 'nick-sys');
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        messageInput.placeholder = 'Type a message and press Enter...';
+        messageInput.focus();
+    }
+</script>
+<script src="chat.js"></script>
+</body>
+</html>
