@@ -2,12 +2,15 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
+const { attachGateway } = require('./proxy/gateway');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: "*" } // Allows your frontend browser to connect safely
 });
+
+attachGateway(server);
 
 const PORT = process.env.PORT || 3000;
 

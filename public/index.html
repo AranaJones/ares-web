@@ -107,10 +107,10 @@
         <div class="sidebar-rooms">
             <div class="sidebar-header-strip">
                 <span>Ares Chat Rooms</span>
-                <button onclick="fetchLiveRooms()">Refresh List</button>
+                <button id="connect-btn" type="button">Connect</button>
             </div>
             <div class="rooms-scroller" id="rooms-list">
-                <div style="padding:15px; text-align:center; color:#888; font-style:italic;">Querying Ares directory hubs...</div>
+                <div style="padding:8px;"><label>Host<br><input type="text" id="room-host" placeholder="chat.example.org"></label><br><label>Port<br><input type="number" id="room-port" value="54321" min="1" max="65535"></label></div>
             </div>
         </div>
 
@@ -120,8 +120,10 @@
             
             <!-- Message submission text field input block module form wrapper bar trigger framework -->
             <div class="chat-input-tray">
-                <input type="text" id="message" placeholder="Select a live server room channel link from the left panel sidebar array to connect..." disabled onkeypress="if(event.key==='Enter') send()">
-                <button id="send-btn" onclick="send()" disabled>Send</button>
+                <form id="chat-form" autocomplete="off" style="display:flex;flex:1;gap:4px;">
+                    <input type="text" id="message" style="flex:1;" placeholder="Connect to a chat room to start chatting..." disabled>
+                    <button type="submit" id="send-btn" disabled>Send</button>
+                </form>
             </div>
         </div>
     </div>
@@ -133,32 +135,6 @@
     </div>
 </div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-    const socket = io();
-    const chatBox = document.getElementById('chat-box');
-    const roomsList = document.getElementById('rooms-list');
-    const connectionStatus = document.getElementById('connectionStatus');
-    const messageInput = document.getElementById('message');
-    const sendBtn = document.getElementById('send-btn');
-
-    function fetchLiveRooms() {
-        roomsList.innerHTML = '<div style="padding:15px; text-align:center; color:#555;">Fetching live data...</div>';
-        socket.emit('get_live_channels');
-    }
-
-    socket.on('live_channels_data', (rooms) => {
-        roomsList.innerHTML = '';
-        rooms.forEach(room => {
-            const btn = document.createElement('button');
-            btn.className = 'channel-row';
-            btn.innerHTML = `<span># ${room.name}</span> <span class="user-counter">[${room.users}]</span>`;
-            btn.onclick = () => connectToRoom(room.ip, room.port, room.name);
-            roomsList.appendChild(btn);
-        });
-    });
-
-    function connectToRoom(ip, port, name) {
-        const username = document.getElementById('username').value;
-        chatBox.innerHTML = ''; 
-        appendMsg('System', `Opening standard connection handshake with server room [${name}] on target ${ip}:${port}...`, 'nick-sys');
+<script src="chat.js"></script>
+</body>
+</html>
