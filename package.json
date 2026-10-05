@@ -1,13 +1,16 @@
 {
   "name": "ares-web-chat",
   "version": "1.0.0",
-  "description": "Ares Galaxy Web Chat Client",
+  "description": "Ares Galaxy web chat client with a cached room directory and server-side chat proxy",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5"
+    "express": "^4.21.2"
   }
 }
