@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 const axios = require('axios');
 
 const app = express();
@@ -12,7 +13,7 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 
 // Serve static frontend files (HTML/JS) from a folder named 'public'
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 /**
  * 1. NODE PARSER ENGINE
@@ -59,10 +60,31 @@ io.on('connection', (socket) => {
     console.log(`[CLIENT CONNECTED] User attached to webchat backend (ID: ${socket.id})`);
 
     // When a browser requests fresh, verified network entry nodes
-    socket.on('request_nodes', async () => {
+    socket.on('get_live_channels', async () => {
         const freshNodes = await syncLiveAresNodes();
+        const rooms = freshNodes.map(({ ip, port }) => ({
+            name: `${ip}:${port}`,
+            users: 0,
+            ip,
+            port
+        }));
         // Send clean data directly back to the HTML client interface
-        socket.emit('node_list_update', freshNodes);
+        socket.emit('live_channels_data', rooms);
+    });
+
+    socket.on('join_room', (room) => {
+        if (typeof room !== 'string') return;
+        if (socket.data.room) socket.leave(socket.data.room);
+        socket.data.room = room;
+        socket.join(room);
+    });
+
+    socket.on('chat_message', (msg) => {
+        if (!socket.data.room || !msg || typeof msg.text !== 'string') return;
+        io.to(socket.data.room).emit('chat_message', {
+            username: String(msg.username || 'Anonymous').slice(0, 32),
+            text: msg.text.slice(0, 500)
+        });
     });
 
     socket.on('disconnect', () => {
@@ -73,12 +95,16 @@ io.on('connection', (socket) => {
 /**
  * 3. ENGINE INITIALISATION
  */
-server.listen(PORT, () => {
-    console.log(`==================================================`);
-    console.log(` Ares Web Client Backend Engine Active!`);
-    console.log(` Server running locally at: http://localhost:${PORT}`);
-    console.log(`==================================================`);
-    
-    // Test the tracker pull immediately on server boot
-    syncLiveAresNodes();
-});
+if (require.main === module) {
+    server.listen(PORT, () => {
+        console.log(`==================================================`);
+        console.log(` Ares Web Client Backend Engine Active!`);
+        console.log(` Server running locally at: http://localhost:${PORT}`);
+        console.log(`==================================================`);
+
+        // Test the tracker pull immediately on server boot
+        syncLiveAresNodes();
+    });
+}
+
+module.exports = { app, server, io, syncLiveAresNodes };

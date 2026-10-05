@@ -162,3 +162,33 @@
         const username = document.getElementById('username').value;
         chatBox.innerHTML = ''; 
         appendMsg('System', `Opening standard connection handshake with server room [${name}] on target ${ip}:${port}...`, 'nick-sys');
+        socket.emit('join_room', `${ip}:${port}`);
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        messageInput.placeholder = 'Type a message...';
+    }
+
+    function appendMsg(nick, text, cls) {
+        const line = document.createElement('div');
+        line.className = 'msg-line';
+        const nickEl = document.createElement('span');
+        nickEl.className = cls;
+        nickEl.textContent = `<${nick}> `;
+        line.appendChild(nickEl);
+        line.appendChild(document.createTextNode(text));
+        chatBox.appendChild(line);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function send() {
+        const text = messageInput.value.trim();
+        if (!text) return;
+        socket.emit('chat_message', { username: document.getElementById('username').value, text });
+        messageInput.value = '';
+    }
+
+    socket.on('chat_message', (msg) => appendMsg(msg.username, msg.text, 'nick-user'));
+    socket.on('connect', () => fetchLiveRooms());
+</script>
+</body>
+</html>
