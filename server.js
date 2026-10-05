@@ -12,7 +12,7 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 
 // Serve static frontend files (HTML/JS) from a folder named 'public'
-app.use(express.static('public'));
+app.use(express.static(require('path').join(__dirname, 'public')));
 
 /**
  * 1. NODE PARSER ENGINE
@@ -51,6 +51,19 @@ async function syncLiveAresNodes() {
     }
 }
 
+function cleanName(name) {
+    return (typeof name === 'string' && name.trim().slice(0, 30)) || 'AresUser';
+}
+
+function buildRoomList(nodes) {
+    const rooms = [{ name: 'Lobby', users: io.sockets.adapter.rooms.get('Lobby')?.size || 0 }];
+    nodes.slice(0, 50).forEach(({ ip, port }) => {
+        const name = `${ip}:${port}`;
+        rooms.push({ name, users: io.sockets.adapter.rooms.get(name)?.size || 0 });
+    });
+    return rooms;
+}
+
 /**
  * 2. WEBSOCKET REAL-TIME CLIENT CONNECTIONS
  * Handles browser users connecting to your web client platform.
@@ -61,8 +74,21 @@ io.on('connection', (socket) => {
     // When a browser requests fresh, verified network entry nodes
     socket.on('request_nodes', async () => {
         const freshNodes = await syncLiveAresNodes();
-        // Send clean data directly back to the HTML client interface
-        socket.emit('node_list_update', freshNodes);
+        socket.emit('node_list_update', buildRoomList(freshNodes));
+    });
+
+    socket.on('join_room', ({ room, username } = {}) => {
+        if (typeof room !== 'string' || !room) return;
+        if (socket.data.room) socket.leave(socket.data.room);
+        socket.data.room = room;
+        socket.data.username = cleanName(username);
+        socket.join(room);
+        io.to(room).emit('chat_message', { username: 'System', text: `${socket.data.username} joined`, system: true });
+    });
+
+    socket.on('chat_message', ({ room, text } = {}) => {
+        if (typeof text !== 'string' || !text.trim() || room !== socket.data.room) return;
+        io.to(room).emit('chat_message', { username: socket.data.username, text: text.slice(0, 500) });
     });
 
     socket.on('disconnect', () => {
@@ -73,7 +99,7 @@ io.on('connection', (socket) => {
 /**
  * 3. ENGINE INITIALISATION
  */
-server.listen(PORT, () => {
+if (require.main === module) server.listen(PORT, () => {
     console.log(`==================================================`);
     console.log(` Ares Web Client Backend Engine Active!`);
     console.log(` Server running locally at: http://localhost:${PORT}`);
@@ -82,3 +108,5 @@ server.listen(PORT, () => {
     // Test the tracker pull immediately on server boot
     syncLiveAresNodes();
 });
+
+module.exports = { server, io, buildRoomList };
