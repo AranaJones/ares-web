@@ -14,6 +14,11 @@ const PORT = process.env.PORT || 3000;
 // Serve static frontend files (HTML/JS) from a folder named 'public'
 app.use(express.static('public'));
 
+// Room directory: GET /api/rooms
+const { createRoomDirectory } = require('./src/rooms');
+const roomDirectory = createRoomDirectory();
+app.use('/api', roomDirectory.router);
+
 /**
  * 1. NODE PARSER ENGINE
  * Automatically downloads and unpacks live binary nodes from the active network tracker.
@@ -81,4 +86,5 @@ server.listen(PORT, () => {
     
     // Test the tracker pull immediately on server boot
     syncLiveAresNodes();
+    roomDirectory.cache.start();
 });
