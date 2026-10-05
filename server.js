@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
+const { decodeHashlink } = require('./lib/hashlink');
 
 const app = express();
 const server = http.createServer(app);
@@ -65,6 +66,15 @@ io.on('connection', (socket) => {
         socket.emit('node_list_update', freshNodes);
     });
 
+    socket.on('join_hashlink', (payload) => {
+        const room = decodeHashlink(payload && payload.hashlink);
+        if (!room) {
+            socket.emit('join_hashlink_result', { ok: false, error: 'Invalid hashlink' });
+            return;
+        }
+        socket.emit('join_hashlink_result', { ok: true, room: { name: room.name, ip: room.ip, port: room.port } });
+    });
+
     socket.on('disconnect', () => {
         console.log(`[CLIENT DISCONNECTED] User detached (ID: ${socket.id})`);
     });
@@ -73,12 +83,16 @@ io.on('connection', (socket) => {
 /**
  * 3. ENGINE INITIALISATION
  */
+if (require.main === module) {
 server.listen(PORT, () => {
-    console.log(`==================================================`);
-    console.log(` Ares Web Client Backend Engine Active!`);
-    console.log(` Server running locally at: http://localhost:${PORT}`);
-    console.log(`==================================================`);
-    
-    // Test the tracker pull immediately on server boot
-    syncLiveAresNodes();
-});
+        console.log(`==================================================`);
+        console.log(` Ares Web Client Backend Engine Active!`);
+        console.log(` Server running locally at: http://localhost:${PORT}`);
+        console.log(`==================================================`);
+        
+        // Test the tracker pull immediately on server boot
+        syncLiveAresNodes();
+    });
+}
+
+module.exports = { app, server };
