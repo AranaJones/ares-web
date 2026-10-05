@@ -23,9 +23,24 @@ test('builds a login packet with the requested nickname', () => {
   const frame = encodeLogin('WebGuest');
   assert.equal(frame.readUInt16LE(0), frame.length - 3);
   assert.equal(frame[2], 2);
-  assert.equal(frame.readUInt16LE(3 + 16), 0);
-  assert.equal(frame[3 + 31], 'W'.charCodeAt(0));
-  assert.equal(frame.subarray(3 + 31, 3 + 40).toString(), 'WebGuest\0');
+  const login = new PacketReader(frame.subarray(3));
+  login.skip(16);
+  assert.equal(login.readUInt16(), 0);
+  assert.equal(login.readByte(), 0);
+  assert.equal(login.readUInt16(), 0);
+  assert.equal(login.readIP(), '0.0.0.0');
+  assert.equal(login.readUInt16(), 65535);
+  login.skip(4);
+  assert.equal(login.readString(), 'WebGuest');
+  assert.equal(login.readString(), 'Ares Web 1.0');
+  assert.equal(login.readIP(), '0.0.0.0');
+  assert.equal(login.readIP(), '0.0.0.0');
+  assert.equal(login.readByte(), 7);
+  login.skip(3);
+  assert.deepEqual([login.readByte(), login.readByte(), login.readByte()], [0, 0, 0]);
+  assert.equal(login.readString(), '');
+  assert.equal(login.readByte(), 0);
+  assert.equal(login.remaining, 0);
 });
 
 test('reads NUL-terminated strings and rejects truncated packet fields', () => {
